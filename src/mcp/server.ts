@@ -16,10 +16,12 @@ import { registerWikiGraph } from "./tools/wiki-graph.js";
 import { registerWikiStructure } from "./tools/wiki-structure.js";
 import { registerWikiSave } from "./tools/wiki-save.js";
 import { registerWikiDelete } from "./tools/wiki-delete.js";
+import { registerWikiExport } from "./tools/wiki-export.js";
+import { registerWikiImport } from "./tools/wiki-import.js";
 
 const server = new McpServer({
   name: "oh-my-adhd",
-  version: "0.2.0",
+  version: "0.2.11",
 });
 
 registerWikiDump(server);
@@ -33,6 +35,8 @@ registerWikiGraph(server);
 registerWikiStructure(server);
 registerWikiSave(server);
 registerWikiDelete(server);
+registerWikiExport(server);
+registerWikiImport(server);
 
 async function main() {
   const transport = new StdioServerTransport();

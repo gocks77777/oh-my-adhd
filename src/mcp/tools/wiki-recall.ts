@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getThreads, getThread, OPEN_SIGNAL, DONE_SIGNAL, extractFieldBrain } from "../../lib/brain.js";
+import { getThreads, getThread, OPEN_SIGNAL, DONE_SIGNAL, extractFieldBrain, updateManifestEntry } from "../../lib/brain.js";
 import { runConsolidationIfDue } from "../../lib/consolidate.js";
 import { git } from "../utils.js";
 
@@ -59,10 +59,10 @@ export function registerWikiRecall(server: McpServer): void {
               // Use stored next_action/blocker from manifest if available
               next_action = t.next_action ?? "";
               blocker = t.blocker ?? "";
-              const is_done = t.is_done !== undefined ? t.is_done : (DONE_SIGNAL.test(last_action) && !is_open);
+              const is_done = t.is_done !== undefined ? t.is_done : DONE_SIGNAL.test(last_action);
               const gapHours = isNaN(new Date(t.updatedAt).getTime())
                 ? null
-                : Math.round((Date.now() - new Date(t.updatedAt).getTime()) / 3600000);
+                : Math.max(0, Math.round((Date.now() - new Date(t.updatedAt).getTime()) / 3600000));
               return {
                 threadId: t.id,
                 title: t.title,
@@ -86,8 +86,8 @@ export function registerWikiRecall(server: McpServer): void {
             const captures = content.split(/\n---\n/).slice(1).filter((p) => p.trim());
             const lastCapture = captures.at(-1) ?? "";
             const fullText = lastCapture.replace(/^(?:_[^_\n]+_|\*\*[^*\n]+\*\*)\s*/m, "").trim();
-            is_open = OPEN_SIGNAL.test(fullText);
-            const isDone = DONE_SIGNAL.test(fullText) && !is_open;
+            is_open = OPEN_SIGNAL.test(fullText) && !DONE_SIGNAL.test(fullText);
+            const isDone = DONE_SIGNAL.test(fullText);
             last_action = fullText.replace(/\n+/g, " ").slice(0, 160);
             next_action = extractFieldBrain(fullText, "다음할것").slice(0, 120);
             blocker = extractFieldBrain(fullText, "막힌것").slice(0, 120);
@@ -95,7 +95,18 @@ export function registerWikiRecall(server: McpServer): void {
 
             const gapHours = isNaN(new Date(t.updatedAt).getTime())
               ? null
-              : Math.round((Date.now() - new Date(t.updatedAt).getTime()) / 3600000);
+              : Math.max(0, Math.round((Date.now() - new Date(t.updatedAt).getTime()) / 3600000));
+
+            // Back-fill manifest cache so stop hook sees correct is_open next time
+            updateManifestEntry(t.id, {
+              is_open,
+              is_done: isDone,
+              capture_count,
+              last_action: last_action.slice(0, 160),
+              next_action: next_action || undefined,
+              blocker: blocker || undefined,
+              title,
+            }).catch(() => {});
 
             return {
               threadId: t.id,
@@ -172,8 +183,16 @@ export function registerWikiRecall(server: McpServer): void {
         const top = sorted[0];
         const others = sorted.slice(1);
 
+        // Stale-open threads: split by depth of abandonment
+        const GHOST_THRESHOLD_H = 336; // 2 weeks
+        const topIsGhost = top.is_open && top.status === "stale" && (top.gap_hours ?? 0) >= GHOST_THRESHOLD_H;
+
         // Lead section header
-        if (top.is_open) {
+        if (topIsGhost) {
+          lines.push("## 💀 아직도 할 거야?\n");
+          const weeks = top.gap_hours !== null ? Math.floor(top.gap_hours / 168) : null;
+          lines.push(`_${weeks ? `${weeks}주` : "오랫동안"} 못 봤어. 계속할 건지, 정리할 건지 결정해줘._\n`);
+        } else if (top.is_open) {
           lines.push("## 어제 멈춘 곳\n");
         } else {
           lines.push("## Second Brain 복원\n");
@@ -191,21 +210,40 @@ export function registerWikiRecall(server: McpServer): void {
         if (top.blocker) lines.push(`> ⛔ 막힌것: ${top.blocker}`);
 
         // Call to action
-        if (top.is_open) {
-          lines.push(`>`);
+        lines.push(`>`);
+        if (topIsGhost) {
+          lines.push(`> → 이어서? \`wiki_dump({ threadId: "${top.threadId}", content: "계속" })\``);
+          lines.push(`> → 정리? \`wiki_dump({ threadId: "${top.threadId}", content: "결정: 이 프로젝트 종료" })\``);
+        } else if (top.is_open) {
           lines.push(`> 이어서 갈까? (thread: \`${top.threadId}\`)`);
         } else {
-          lines.push(`>`);
           lines.push(`> thread: \`${top.threadId}\``);
         }
 
-        // Stale-open threads the user has forgotten — flag them separately
-        const forgottenThreads = others.filter(t => t.is_open && t.status === "stale");
+        // Stale-open threads: split by depth of abandonment
+        const ghostThreads = others.filter(t => t.is_open && t.status === "stale" && (t.gap_hours ?? 0) >= GHOST_THRESHOLD_H);
+        const forgottenThreads = others.filter(t => t.is_open && t.status === "stale" && (t.gap_hours ?? 0) < GHOST_THRESHOLD_H);
         const activeOthers = others.filter(t => !(t.is_open && t.status === "stale"));
+
+        // Ghost projects: 2+ weeks untouched — direct question
+        if (ghostThreads.length > 0) {
+          lines.push("\n---");
+          lines.push("## 💀 아직도 할 거야?");
+          lines.push(`_${Math.floor(GHOST_THRESHOLD_H / 168)}주 이상 못 봤어. 계속할 건지, 정리할 건지 결정해줘._`);
+          for (const t of ghostThreads) {
+            const weeks = t.gap_hours !== null ? Math.floor(t.gap_hours / 168) : null;
+            const gapStr = weeks !== null ? `${weeks}주 전` : "";
+            const preview = t.next_action || t.last_action?.replace(/^(?:결정|가설|막힌것|다음할것|블로커|요약)\s*:\s*/i, "").slice(0, 80) || "";
+            lines.push(`💀 **${t.title}**${gapStr ? ` (${gapStr})` : ""}`);
+            if (preview) lines.push(`   마지막: ${preview}`);
+            lines.push(`   → 이어서? \`wiki_dump({ threadId: "${t.threadId}", content: "계속" })\``);
+            lines.push(`   → 정리? \`wiki_dump({ threadId: "${t.threadId}", content: "결정: 이 프로젝트 종료" })\``);
+          }
+        }
 
         if (forgottenThreads.length > 0) {
           lines.push("\n---");
-          lines.push("## 📌 잊고 있던 거 (열려있는데 오랫동안 못 봄)");
+          lines.push("## 📌 잊고 있던 거");
           for (const t of forgottenThreads) {
             const gap = gapLabel(t.gap_hours);
             const preview = t.next_action || t.last_action?.replace(/^(?:결정|가설|막힌것|다음할것|블로커|요약)\s*:\s*/i, "").slice(0, 80) || "";

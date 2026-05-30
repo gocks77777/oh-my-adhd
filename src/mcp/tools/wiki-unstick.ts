@@ -5,7 +5,7 @@ import { getThreads, getThread, OPEN_SIGNAL, extractFieldBrain } from "../../lib
 export function registerWikiUnstick(server: McpServer): void {
   server.tool(
     "wiki_unstick",
-    "막혀서 무력감 느낄 때 호출. 이미 시도해서 안 된 것은 제외하고, 에너지 레벨에 맞는 가장 작은 한 발자국만 알려준다. low=2분, medium=5분, high=15분.",
+    "막혀서 무력감 느낄 때 호출. 막힌 컨텍스트와 dead-end 목록을 수집해서 반환한다. **이 툴을 호출한 후 Claude는 반드시** 반환된 컨텍스트를 보고 에너지 레벨에 맞는 구체적인 스텝 하나를 한 줄로 직접 제안해야 한다. 제안은 행동 동사로 시작하고, ⛔ 목록에 있는 것은 절대 포함하지 않는다.",
     {
       task: z.string().max(2_000).optional().describe("막힌 태스크 직접 설명 (없으면 최근 미완료 스레드 자동 감지)"),
       energy: z.enum(["low", "medium", "high"]).optional().default("medium").describe("현재 집중력/에너지 수준 (low=2분짜리, medium=5분짜리, high=15분짜리)"),
@@ -59,9 +59,10 @@ export function registerWikiUnstick(server: McpServer): void {
           // Collect dead-ends from all open threads (not just the chosen one)
           const allOpenThreads = threads.filter(t => t.is_open && t.id !== chosenThread.id);
 
-          for (const ot of allOpenThreads.slice(0, 10)) {
-            const otContent = await getThread(ot.id);
-            if (!otContent) continue;
+          const otContents = await Promise.all(allOpenThreads.slice(0, 10).map(ot => getThread(ot.id)));
+          allOpenThreads.slice(0, 10).forEach((ot, i) => {
+            const otContent = otContents[i];
+            if (!otContent) return;
             const otCaptures = otContent.split(/\n---\n/).slice(1).filter(p => p.trim());
             const otLast = otCaptures.at(-1) ?? "";
             const otText = otLast.replace(/^(?:_[^_\n]+_|\*\*[^*\n]+\*\*)\s*/m, "").trim();
@@ -70,7 +71,7 @@ export function registerWikiUnstick(server: McpServer): void {
             if (otBlocker && !deadEnds.some(d => d.toLowerCase().replace(/\s+/g, " ").includes(otBlockerKey))) {
               crossThreadBlockers.push(`[${ot.title?.slice(0, 20) ?? "다른 스레드"}] ${otBlocker}`);
             }
-          }
+          });
         }
 
         if (!task && !targetTitle && !targetContext) {
@@ -118,9 +119,7 @@ export function registerWikiUnstick(server: McpServer): void {
         lines.push(
           "",
           "---",
-          "",
-          `위 내용을 보고 **지금 당장 할 수 있는 ${taskSize}짜리 스텝 하나**만 알려줘.`,
-          `조건: 행동 동사로 시작 / ${taskDetail} / ⛔ 목록에 있는 것 절대 제안 금지 / 한 줄`
+          `_제안 기준: ${taskSize}짜리 / ${taskDetail}_`
         );
 
         return { content: [{ type: "text", text: lines.join("\n") }] };

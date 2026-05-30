@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { saveCapture, getThread, getThreads } from "../../lib/brain.js";
+import fs from "fs/promises";
+import path from "path";
+import { saveCapture, getThread, getThreads, BRAIN_DIR } from "../../lib/brain.js";
 import { findRelatedPages, upsertPageFromCapture } from "../../lib/linker.js";
 import { captureGitContext } from "../utils.js";
 
@@ -65,9 +67,17 @@ export function registerWikiDump(server: McpServer): void {
           } catch { /* dead-end check is best-effort, never crash */ }
         }
 
-        // Only nag if user has NEVER successfully used structured schema — avoids repeated noise
-        const hasEverStructured = allThreads.some(t => t.next_action || t.blocker);
-        if (!isStructured && !result.skipped && !hasEverStructured) {
+        // Dopamine streak: show today's save count when ≥2
+        if (!result.skipped && allThreads.length > 0) {
+          const today = new Date().toISOString().slice(0, 10);
+          const todayCount = allThreads.filter(t => t.updatedAt?.startsWith(today)).length;
+          if (todayCount >= 2) respLines[0] = `저장됨 ✓ (오늘 ${todayCount}번째 🔥)`;
+        }
+
+        // Only nag once — user can dismiss permanently by touching .nag-dismissed
+        let nagDismissed = false;
+        try { await fs.access(path.join(BRAIN_DIR, ".nag-dismissed")); nagDismissed = true; } catch {}
+        if (!isStructured && !result.skipped && !nagDismissed) {
           respLines.push("");
           respLines.push("💡 다음번엔 이 형식으로 쓰면 다음 세션에서 더 잘 복원돼:");
           respLines.push("```");

@@ -16,6 +16,13 @@ export const SCHEMA_VERSION = 1;
 async function appendLog(level: "INFO" | "WARN" | "ERROR", msg: string): Promise<void> {
   try {
     const entry = `${new Date().toISOString()} [${level}] ${msg}\n`;
+    // Rotate log at 10MB
+    try {
+      const stat = await fs.stat(LOG_FILE);
+      if (stat.size > 10 * 1024 * 1024) {
+        await fs.rename(LOG_FILE, LOG_FILE + ".1").catch(() => {});
+      }
+    } catch { /* file may not exist yet */ }
     await fs.appendFile(LOG_FILE, entry, "utf-8");
   } catch { /* logging failures must never crash the server */ }
 }
@@ -255,8 +262,8 @@ export async function saveCapture(
 
     // Compute signal cache fields from new content
     const stripped = stripGitSuffix(content).trim();
-    const is_open = OPEN_SIGNAL.test(stripped);
-    const is_done = DONE_SIGNAL.test(stripped) && !is_open;
+    const is_open = OPEN_SIGNAL.test(stripped) && !DONE_SIGNAL.test(stripped);
+    const is_done = DONE_SIGNAL.test(stripped);
     const last_action = stripped.replace(/\n+/g, " ").slice(0, 160);
     const next_action = extractFieldBrain(stripped, "다음할것").slice(0, 120);
     const blocker = extractFieldBrain(stripped, "막힌것").slice(0, 120);
@@ -271,6 +278,12 @@ export async function saveCapture(
     await writeManifest(
       manifest.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     );
+
+    // Session-scoped dump marker for stop-hook
+    let sid = "";
+    try { sid = (await fs.readFile(path.join(BRAIN_DIR, ".session-current"), "utf-8")).trim(); } catch {}
+    const lastDumpFile = path.join(BRAIN_DIR, sid ? `.last-dump-${sid}` : ".last-dump");
+    await fs.writeFile(lastDumpFile, String(Date.now()), "utf-8").catch(() => {});
   });
 
   return { capture, threadId: tid, title, skipped };
@@ -301,7 +314,7 @@ export async function getThreads(): Promise<Thread[]> {
       const scanCaptures = content.split(/\n---\n/).slice(1).filter((p) => p.trim());
       const lastCapture = scanCaptures.at(-1) ?? "";
       const fullText = lastCapture.replace(/^(?:_[^_\n]+_|\*\*[^*\n]+\*\*)\s*/m, "").trim();
-      const is_open = OPEN_SIGNAL.test(fullText);
+      const is_open = OPEN_SIGNAL.test(fullText) && !DONE_SIGNAL.test(fullText);
       return {
         id: tid,
         title,
@@ -312,7 +325,7 @@ export async function getThreads(): Promise<Thread[]> {
         next_action: extractFieldBrain(fullText, "다음할것").slice(0, 120),
         blocker: extractFieldBrain(fullText, "막힌것").slice(0, 120),
         capture_count: scanCaptures.length,
-        is_done: DONE_SIGNAL.test(fullText) && !OPEN_SIGNAL.test(fullText),
+        is_done: DONE_SIGNAL.test(fullText),
       };
     })
   );
@@ -347,7 +360,7 @@ export async function getThreads(): Promise<Thread[]> {
 }
 
 export async function getThread(threadId: string): Promise<string | null> {
-  if (!threadId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId)) return null;
+  if (!threadId || !/^[a-zA-Z0-9_-]+$/.test(threadId)) return null;
   try {
     return await fs.readFile(
       path.join(THREADS_DIR, `${threadId}.md`),
@@ -419,7 +432,7 @@ export async function savePage(slug: string, content: string): Promise<void> {
   await fs.rename(tmpPage, pageFile);
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[a-zA-Z0-9_-]+$/;
 const TRASH_DIR = path.join(BRAIN_DIR, ".trash");
 
 export async function deleteThread(threadId: string): Promise<void> {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, copyFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, copyFileSync, renameSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
@@ -95,31 +95,28 @@ switch (cmd) {
 
     settings.hooks = settings.hooks || {};
 
-    // SessionStart: wiki_recall (mcp_tool — actually fires the tool, not just echo)
+    // SessionStart: write session-start timestamp for Stop hook
+    // (wiki_recall is invoked by CLAUDE.md instruction, not a hook — avoids chicken-and-egg MCP startup error)
     settings.hooks.SessionStart = settings.hooks.SessionStart || [];
-    const alreadyHasRecall = settings.hooks.SessionStart.some((entry) =>
+
+    // Remove legacy mcp_tool wiki_recall hooks (they caused "SessionStart:startup hook error")
+    settings.hooks.SessionStart = settings.hooks.SessionStart.map((entry) => {
+      if (!Array.isArray(entry.hooks)) return entry;
+      const filtered = entry.hooks.filter(
+        (h) => !(h.type === "mcp_tool" && h.server === "oh-my-adhd" && h.tool === "wiki_recall")
+      );
+      return filtered.length === 0 ? null : { ...entry, hooks: filtered };
+    }).filter(Boolean);
+
+    const timestampCmd = `node -e "const{writeFileSync,mkdirSync}=require('fs'),{join}=require('path'),{homedir}=require('os');const d=process.env.OH_MY_ADHD_DIR||join(homedir(),'.oh-my-adhd');try{mkdirSync(d,{recursive:true})}catch{}writeFileSync(join(d,'.session-start'),String(Date.now()))"`;
+    const alreadyHasTimestamp = settings.hooks.SessionStart.some((entry) =>
       Array.isArray(entry.hooks) && entry.hooks.some(
-        (h) => h.type === "mcp_tool" && h.server === "oh-my-adhd" && h.tool === "wiki_recall"
+        (h) => h.type === "command" && h.command?.includes(".session-start")
       )
     );
-    if (!alreadyHasRecall) {
+    if (!alreadyHasTimestamp) {
       settings.hooks.SessionStart.push({
-        hooks: [
-          {
-            type: "mcp_tool",
-            server: "oh-my-adhd",
-            tool: "wiki_recall",
-            input: { limit: 5 },
-            statusMessage: "어제 어디까지 했더라...",
-            timeout: 15,
-          },
-          {
-            type: "command",
-            // Write session-start timestamp so Stop hook knows if a dump happened this session
-            command: `node -e "const{writeFileSync,mkdirSync}=require('fs'),{join}=require('path'),{homedir}=require('os');const d=process.env.OH_MY_ADHD_DIR||join(homedir(),'.oh-my-adhd');try{mkdirSync(d,{recursive:true})}catch{}writeFileSync(join(d,'.session-start'),String(Date.now()))"`,
-            timeout: 5,
-          },
-        ],
+        hooks: [{ type: "command", command: timestampCmd, timeout: 5 }],
       });
     }
 
@@ -148,7 +145,9 @@ switch (cmd) {
       });
     }
 
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
+    const settingsTmp = `${settingsPath}.tmp.${randomUUID()}`;
+    writeFileSync(settingsTmp, JSON.stringify(settings, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+    renameSync(settingsTmp, settingsPath);
     console.log(`✓ Hooks registered in ${settingsPath}`);
 
     console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");

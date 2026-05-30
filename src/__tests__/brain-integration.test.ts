@@ -52,11 +52,11 @@ describe("saveCapture: basic write + manifest cache fields", () => {
     expect(manifest[0].is_open).toBe(false);
   });
 
-  it("sets is_done=false when is_open=true even if 상태: 완료 present", async () => {
+  it("DONE_SIGNAL overrides OPEN_SIGNAL — 상태: 완료 closes thread even if 다음할것 present", async () => {
     await brain.saveCapture("다음할것: 후속 작업\n상태: 완료");
     const manifest = await readManifest();
-    expect(manifest[0].is_open).toBe(true);
-    expect(manifest[0].is_done).toBe(false);
+    expect(manifest[0].is_open).toBe(false);
+    expect(manifest[0].is_done).toBe(true);
   });
 
   it("sets is_done=true when content has 상태: 완료 and no open signals", async () => {
