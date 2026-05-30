@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, UUID_RE, isSensitivePath, withBrainLock } from "../../lib/brain.js";
+import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, UUID_RE, isSensitivePath, withBrainLock, ThreadMeta } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -106,7 +106,7 @@ export function registerWikiImport(server: McpServer): void {
 
         await withBrainLock(async () => {
           // Load existing manifest inside lock
-          let manifest: Array<{ id: string }> = [];
+          let manifest: ThreadMeta[] = [];
           try {
             manifest = JSON.parse(await fs.readFile(manifestFile, "utf-8"));
           } catch { /* start fresh if missing */ }
@@ -136,8 +136,11 @@ export function registerWikiImport(server: McpServer): void {
             }
 
             // Project only allowed ThreadMeta fields — no arbitrary spread
-            const meta: Record<string, unknown> = { id, title };
-            meta.updatedAt = typeof thread.updatedAt === "string" ? thread.updatedAt : new Date().toISOString();
+            const meta: ThreadMeta = {
+              id,
+              title,
+              updatedAt: typeof thread.updatedAt === "string" ? thread.updatedAt : new Date().toISOString(),
+            };
             if (typeof thread.is_open === "boolean") meta.is_open = thread.is_open;
             if (typeof thread.is_done === "boolean") meta.is_done = thread.is_done;
             if (typeof thread.last_action === "string") meta.last_action = thread.last_action;
@@ -146,16 +149,14 @@ export function registerWikiImport(server: McpServer): void {
             if (typeof thread.capture_count === "number") meta.capture_count = thread.capture_count;
 
             const idx = manifest.findIndex(m => m.id === id);
-            if (idx >= 0) manifest[idx] = meta as { id: string };
-            else manifest.push(meta as { id: string });
+            if (idx >= 0) manifest[idx] = meta;
+            else manifest.push(meta);
             existingIds.add(id); // prevent duplicate IDs within same import
             importedThreads++;
           }
 
           // Sort by updatedAt desc — matches saveCapture/updateManifestEntry behavior
-          (manifest as unknown as Array<Record<string, unknown>>).sort((a, b) =>
-            new Date(b.updatedAt as string).getTime() - new Date(a.updatedAt as string).getTime()
-          );
+          manifest.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
           const tmp = manifestFile + ".tmp";
           await fs.writeFile(tmp, JSON.stringify(manifest, null, 2), "utf-8");
           await fs.rename(tmp, manifestFile);

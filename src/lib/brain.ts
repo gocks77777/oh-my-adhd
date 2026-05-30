@@ -78,7 +78,7 @@ export interface Page {
   updatedAt: string;
 }
 
-interface ThreadMeta {
+export interface ThreadMeta {
   id: string;
   title: string;
   updatedAt: string;

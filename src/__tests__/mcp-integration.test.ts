@@ -208,6 +208,28 @@ describe("wiki_import", () => {
     expect(() => new Date(entry!.updatedAt!).toISOString()).not.toThrow();
   });
 
+  it("manifest is sorted by updatedAt desc after import", async () => {
+    const { writeFile, readFile } = await import("fs/promises");
+    const sortTest = join(tmpDir, "sort-test.json");
+    const older = "11112222-3333-4444-5555-666677778888";
+    const newer = "aaaabbbb-1111-2222-3333-ccccddddeeee";
+    await writeFile(sortTest, JSON.stringify({
+      schemaVersion: 1,
+      threads: [
+        { id: older, title: "오래된", content: "old", updatedAt: "2020-01-01T00:00:00.000Z" },
+        { id: newer, title: "최신", content: "new", updatedAt: "2026-01-01T00:00:00.000Z" },
+      ],
+      pages: [],
+    }), "utf-8");
+
+    await client.callTool({ name: "wiki_import", arguments: { inputPath: sortTest } });
+
+    const manifestRaw = await readFile(join(tmpDir, "threads", ".manifest.json"), "utf-8");
+    const manifest = JSON.parse(manifestRaw) as Array<{ id: string }>;
+    expect(manifest[0].id).toBe(newer);
+    expect(manifest[1].id).toBe(older);
+  });
+
   it("rejects path traversal in thread.id", async () => {
     const { writeFile } = await import("fs/promises");
     const evil = join(tmpDir, "evil.json");
