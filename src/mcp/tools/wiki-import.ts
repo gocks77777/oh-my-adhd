@@ -140,7 +140,7 @@ export function registerWikiImport(server: McpServer): void {
               id,
               title,
               updatedAt: typeof thread.updatedAt === "string" && Number.isFinite(Date.parse(thread.updatedAt))
-                ? thread.updatedAt
+                ? new Date(thread.updatedAt).toISOString()
                 : new Date().toISOString(),
             };
             if (typeof thread.is_open === "boolean") meta.is_open = thread.is_open;

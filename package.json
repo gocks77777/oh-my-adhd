@@ -1,15 +1,15 @@
 {
   "name": "oh-my-adhd",
-  "version": "0.2.25",
+  "version": "0.2.26",
   "description": "ADHD second brain — zero-friction capture, auto context restore, unstick. MCP-native Claude Code plugin.",
   "author": "Haechan Jeong",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Yeachan-Heo/oh-my-adhd.git"
+    "url": "git+https://github.com/gocks77777/oh-my-adhd.git"
   },
-  "homepage": "https://github.com/Yeachan-Heo/oh-my-adhd#readme",
+  "homepage": "https://github.com/gocks77777/oh-my-adhd#readme",
   "bugs": {
-    "url": "https://github.com/Yeachan-Heo/oh-my-adhd/issues"
+    "url": "https://github.com/gocks77777/oh-my-adhd/issues"
   },
   "keywords": [
     "claude",
