@@ -279,10 +279,9 @@ export async function saveCapture(
       manifest.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     );
 
-    // Session-scoped dump marker for stop-hook
-    let sid = "";
-    try { sid = (await fs.readFile(path.join(BRAIN_DIR, ".session-current"), "utf-8")).trim(); } catch {}
-    const lastDumpFile = path.join(BRAIN_DIR, sid ? `.last-dump-${sid}` : ".last-dump");
+    // Session-scoped dump marker — keyed by parent PID (= Claude Code instance PID)
+    const ppid = process.ppid ?? 0;
+    const lastDumpFile = path.join(BRAIN_DIR, ppid ? `.last-dump-${ppid}` : ".last-dump");
     await fs.writeFile(lastDumpFile, String(Date.now()), "utf-8").catch(() => {});
   });
 

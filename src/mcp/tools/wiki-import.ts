@@ -1,8 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION } from "../../lib/brain.js";
+import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, withBrainLock } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SLUG_RE = /^[a-z0-9가-힣][a-z0-9가-힣_-]{0,127}$/;
+const MAX_CONTENT_BYTES = 5 * 1024 * 1024; // 5MB per thread
 
 export function registerWikiImport(server: McpServer): void {
   server.tool(
@@ -32,10 +36,17 @@ export function registerWikiImport(server: McpServer): void {
           };
         }
 
+        if (Buffer.byteLength(raw, "utf-8") > 100 * 1024 * 1024) {
+          return {
+            content: [{ type: "text", text: "오류: 파일이 너무 큽니다 (100MB 초과)." }],
+            isError: true,
+          };
+        }
+
         let exportData: {
           schemaVersion?: number;
-          threads?: Array<{ id: string; title: string; content?: string; [k: string]: unknown }>;
-          pages?: Array<{ slug: string; title: string; content: string; [k: string]: unknown }>;
+          threads?: unknown[];
+          pages?: unknown[];
         };
         try {
           exportData = JSON.parse(raw);
@@ -53,7 +64,7 @@ export function registerWikiImport(server: McpServer): void {
           };
         }
 
-        if (exportData.schemaVersion && exportData.schemaVersion !== SCHEMA_VERSION) {
+        if (exportData.schemaVersion !== undefined && exportData.schemaVersion !== SCHEMA_VERSION) {
           return {
             content: [{ type: "text", text: `오류: 스키마 버전 불일치 (파일: ${exportData.schemaVersion}, 현재: ${SCHEMA_VERSION})` }],
             isError: true,
@@ -65,50 +76,75 @@ export function registerWikiImport(server: McpServer): void {
         const pagesDir = path.join(BRAIN_DIR, "pages");
         const manifestFile = path.join(threadsDir, ".manifest.json");
 
-        // Load existing manifest
-        let manifest: unknown[] = [];
-        try {
-          manifest = JSON.parse(await fs.readFile(manifestFile, "utf-8"));
-        } catch { /* start fresh if missing */ }
-
-        const existingIds = new Set((manifest as Array<{ id: string }>).map(m => m.id));
         let importedThreads = 0;
         let skippedThreads = 0;
+        let importedPages = 0;
 
-        for (const thread of exportData.threads) {
-          if (!thread.id || !thread.title) continue;
-          if (!overwrite && existingIds.has(thread.id)) { skippedThreads++; continue; }
+        await withBrainLock(async () => {
+          // Load existing manifest inside lock
+          let manifest: Array<{ id: string }> = [];
+          try {
+            manifest = JSON.parse(await fs.readFile(manifestFile, "utf-8"));
+          } catch { /* start fresh if missing */ }
 
-          // Write thread file
-          if (thread.content) {
-            const threadFile = path.join(threadsDir, `${thread.id}.md`);
-            const tmp = threadFile + ".tmp";
-            await fs.writeFile(tmp, thread.content, "utf-8");
-            await fs.rename(tmp, threadFile);
+          const existingIds = new Set(manifest.map(m => m.id));
+
+          for (const rawThread of exportData.threads!) {
+            if (typeof rawThread !== "object" || rawThread === null) continue;
+            const thread = rawThread as Record<string, unknown>;
+
+            const id = typeof thread.id === "string" ? thread.id : "";
+            const title = typeof thread.title === "string" ? thread.title : "";
+            if (!UUID_RE.test(id) || !title) { skippedThreads++; continue; }
+            if (!overwrite && existingIds.has(id)) { skippedThreads++; continue; }
+
+            // Write thread content file if present
+            if (typeof thread.content === "string") {
+              const contentBytes = Buffer.byteLength(thread.content, "utf-8");
+              if (contentBytes <= MAX_CONTENT_BYTES) {
+                const threadFile = path.join(threadsDir, `${id}.md`);
+                const tmp = threadFile + ".tmp";
+                await fs.writeFile(tmp, thread.content, "utf-8");
+                await fs.rename(tmp, threadFile);
+              }
+            }
+
+            // Project only allowed ThreadMeta fields — no arbitrary spread
+            const meta: Record<string, unknown> = { id, title };
+            if (typeof thread.updatedAt === "string") meta.updatedAt = thread.updatedAt;
+            if (typeof thread.is_open === "boolean") meta.is_open = thread.is_open;
+            if (typeof thread.is_done === "boolean") meta.is_done = thread.is_done;
+            if (typeof thread.last_action === "string") meta.last_action = thread.last_action;
+            if (typeof thread.next_action === "string") meta.next_action = thread.next_action;
+            if (typeof thread.blocker === "string") meta.blocker = thread.blocker;
+            if (typeof thread.capture_count === "number") meta.capture_count = thread.capture_count;
+
+            const idx = manifest.findIndex(m => m.id === id);
+            if (idx >= 0) manifest[idx] = meta as { id: string };
+            else manifest.push(meta as { id: string });
+            importedThreads++;
           }
 
-          // Update manifest entry
-          const { content: _c, ...meta } = thread;
-          const idx = (manifest as Array<{ id: string }>).findIndex(m => m.id === thread.id);
-          if (idx >= 0) (manifest as unknown[])[idx] = meta;
-          else manifest.push(meta);
-          importedThreads++;
-        }
+          // Write updated manifest atomically inside lock
+          const tmp = manifestFile + ".tmp";
+          await fs.writeFile(tmp, JSON.stringify(manifest, null, 2), "utf-8");
+          await fs.rename(tmp, manifestFile);
+        });
 
-        // Write updated manifest atomically
-        const tmp = manifestFile + ".tmp";
-        await fs.writeFile(tmp, JSON.stringify(manifest, null, 2), "utf-8");
-        await fs.rename(tmp, manifestFile);
-
-        // Import pages if present
-        let importedPages = 0;
+        // Import pages (not manifest-managed, no lock needed)
         if (exportData.pages && Array.isArray(exportData.pages)) {
-          for (const page of exportData.pages) {
-            if (!page.slug || !page.content) continue;
-            const pageFile = path.join(pagesDir, `${page.slug}.md`);
-            const tmp2 = pageFile + ".tmp";
-            await fs.writeFile(tmp2, page.content, "utf-8");
-            await fs.rename(tmp2, pageFile);
+          for (const rawPage of exportData.pages) {
+            if (typeof rawPage !== "object" || rawPage === null) continue;
+            const page = rawPage as Record<string, unknown>;
+
+            const slug = typeof page.slug === "string" ? page.slug : "";
+            const content = typeof page.content === "string" ? page.content : "";
+            if (!SLUG_RE.test(slug) || !content) continue;
+
+            const pageFile = path.join(pagesDir, `${slug}.md`);
+            const tmp = pageFile + ".tmp";
+            await fs.writeFile(tmp, content, "utf-8");
+            await fs.rename(tmp, pageFile);
             importedPages++;
           }
         }
