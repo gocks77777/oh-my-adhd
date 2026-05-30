@@ -126,12 +126,14 @@ export function registerWikiImport(server: McpServer): void {
             // Write thread content file if present
             if (typeof thread.content === "string") {
               const contentBytes = Buffer.byteLength(thread.content, "utf-8");
-              if (contentBytes <= MAX_CONTENT_BYTES) {
-                const threadFile = path.join(threadsDir, `${id}.md`);
-                const tmp = threadFile + ".tmp";
-                await fs.writeFile(tmp, thread.content, "utf-8");
-                await fs.rename(tmp, threadFile);
+              if (contentBytes > MAX_CONTENT_BYTES) {
+                skippedThreads++;
+                continue;
               }
+              const threadFile = path.join(threadsDir, `${id}.md`);
+              const tmp = threadFile + ".tmp";
+              await fs.writeFile(tmp, thread.content, "utf-8");
+              await fs.rename(tmp, threadFile);
             }
 
             // Project only allowed ThreadMeta fields — no arbitrary spread
