@@ -35,10 +35,19 @@ export function registerWikiExport(server: McpServer): void {
         const defaultPath = path.join(os.homedir(), `oh-my-adhd-export-${date}.json`);
         const resolved = outputPath ? path.resolve(outputPath) : defaultPath;
 
-        // Require .json extension — prevents LLM-controlled path from clobbering arbitrary config files
+        // Require .json extension — prevents LLM-controlled path from clobbering non-JSON config files
         if (!resolved.endsWith(".json")) {
           return {
             content: [{ type: "text", text: "오류: outputPath는 .json 확장자로 끝나야 합니다." }],
+            isError: true,
+          };
+        }
+        // Block writes into known sensitive dirs (~/.ssh, ~/.aws, ~/.gnupg)
+        const sensitivePatterns = [".ssh/", ".aws/", ".gnupg/", ".config/git/"];
+        const homeDir = os.homedir();
+        if (sensitivePatterns.some(p => resolved.startsWith(path.join(homeDir, p)))) {
+          return {
+            content: [{ type: "text", text: "오류: 보안상 해당 경로에는 내보낼 수 없습니다." }],
             isError: true,
           };
         }

@@ -358,8 +358,10 @@ export async function getThreads(): Promise<Thread[]> {
   return sorted;
 }
 
+const UUID_RE_STRICT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getThread(threadId: string): Promise<string | null> {
-  if (!threadId || !/^[a-zA-Z0-9_-]+$/.test(threadId)) return null;
+  if (!threadId || !UUID_RE_STRICT.test(threadId)) return null;
   try {
     return await fs.readFile(
       path.join(THREADS_DIR, `${threadId}.md`),

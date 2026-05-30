@@ -8,13 +8,15 @@ const BRAIN_DIR = process.env.OH_MY_ADHD_DIR ?? join(homedir(), ".oh-my-adhd");
 const MANIFEST = join(BRAIN_DIR, "threads", ".manifest.json");
 
 // Use parent PID (= Claude Code instance) as session discriminator — no singleton file needed
-const ppid = process.ppid ?? 0;
+const ppid = process.ppid;
 
-// Write per-session start marker
-try {
-  mkdirSync(BRAIN_DIR, { recursive: true });
-  writeFileSync(join(BRAIN_DIR, `.session-start-${ppid}`), String(Date.now()));
-} catch { /* non-fatal */ }
+// Write per-session start marker (skip if ppid is unavailable — avoids shared .session-start-0)
+if (ppid) {
+  try {
+    mkdirSync(BRAIN_DIR, { recursive: true });
+    writeFileSync(join(BRAIN_DIR, `.session-start-${ppid}`), String(Date.now()));
+  } catch { /* non-fatal */ }
+}
 
 // GC stale session files older than 24h (runs on every new session)
 try {

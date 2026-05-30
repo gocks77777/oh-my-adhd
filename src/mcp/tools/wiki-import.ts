@@ -129,25 +129,25 @@ export function registerWikiImport(server: McpServer): void {
           const tmp = manifestFile + ".tmp";
           await fs.writeFile(tmp, JSON.stringify(manifest, null, 2), "utf-8");
           await fs.rename(tmp, manifestFile);
-        });
 
-        // Import pages (not manifest-managed, no lock needed)
-        if (exportData.pages && Array.isArray(exportData.pages)) {
-          for (const rawPage of exportData.pages) {
-            if (typeof rawPage !== "object" || rawPage === null) continue;
-            const page = rawPage as Record<string, unknown>;
+          // Import pages inside lock for consistency with concurrent dump+import
+          if (exportData.pages && Array.isArray(exportData.pages)) {
+            for (const rawPage of exportData.pages) {
+              if (typeof rawPage !== "object" || rawPage === null) continue;
+              const page = rawPage as Record<string, unknown>;
 
-            const slug = typeof page.slug === "string" ? page.slug : "";
-            const content = typeof page.content === "string" ? page.content : "";
-            if (!SLUG_RE.test(slug) || !content) continue;
+              const slug = typeof page.slug === "string" ? page.slug : "";
+              const content = typeof page.content === "string" ? page.content : "";
+              if (!SLUG_RE.test(slug) || !content) continue;
 
-            const pageFile = path.join(pagesDir, `${slug}.md`);
-            const tmp = pageFile + ".tmp";
-            await fs.writeFile(tmp, content, "utf-8");
-            await fs.rename(tmp, pageFile);
-            importedPages++;
+              const pageFile = path.join(pagesDir, `${slug}.md`);
+              const pageTmp = pageFile + ".tmp";
+              await fs.writeFile(pageTmp, content, "utf-8");
+              await fs.rename(pageTmp, pageFile);
+              importedPages++;
+            }
           }
-        }
+        });
 
         return {
           content: [{

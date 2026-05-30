@@ -11,7 +11,9 @@ const BRAIN_DIR = process.env.OH_MY_ADHD_DIR ?? join(homedir(), ".oh-my-adhd");
 const MANIFEST = join(BRAIN_DIR, "threads", ".manifest.json");
 
 // Use parent PID (= Claude Code instance) as session discriminator
-const ppid = process.ppid ?? 0;
+const ppid = process.ppid;
+// If ppid is unavailable, skip protection rather than risk a shared-file collision
+if (!ppid) process.exit(0);
 const SESSION_START_FILE = join(BRAIN_DIR, `.session-start-${ppid}`);
 const LAST_DUMP_FILE = join(BRAIN_DIR, `.last-dump-${ppid}`);
 
