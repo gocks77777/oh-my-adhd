@@ -16,6 +16,15 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 export const SENSITIVE_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker",
   path.join(".config", "git"), path.join(".config", "gh")];
 
+export async function isSensitivePath(filePath: string): Promise<boolean> {
+  const homeDir = os.homedir();
+  let realDir = path.dirname(filePath);
+  try { realDir = await fs.realpath(realDir); } catch { /* dir may not exist yet */ }
+  const realHome = await fs.realpath(homeDir).catch(() => homeDir);
+  const rel = path.relative(realHome, realDir).toLowerCase();
+  return SENSITIVE_DIRS.some(d => rel === d.toLowerCase() || rel.startsWith(d.toLowerCase() + path.sep));
+}
+
 async function appendLog(level: "INFO" | "WARN" | "ERROR", msg: string): Promise<void> {
   try {
     const entry = `${new Date().toISOString()} [${level}] ${msg}\n`;

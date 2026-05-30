@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, UUID_RE, SENSITIVE_DIRS, withBrainLock } from "../../lib/brain.js";
+import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, UUID_RE, isSensitivePath, withBrainLock } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -28,12 +28,7 @@ export function registerWikiImport(server: McpServer): void {
         }
 
         // Block reads from sensitive dirs — mirrors wiki_export denylist
-        const homeDir = os.homedir();
-        let realInputDir = path.dirname(resolved);
-        try { realInputDir = await fs.realpath(realInputDir); } catch { /* dir may not exist */ }
-        const realHome = await fs.realpath(homeDir).catch(() => homeDir);
-        const relInputDir = path.relative(realHome, realInputDir).toLowerCase();
-        if (SENSITIVE_DIRS.some(d => relInputDir === d.toLowerCase() || relInputDir.startsWith(d.toLowerCase() + path.sep))) {
+        if (await isSensitivePath(resolved)) {
           return {
             content: [{ type: "text", text: "오류: 보안상 해당 경로에서는 가져올 수 없습니다." }],
             isError: true,
@@ -169,7 +164,7 @@ export function registerWikiImport(server: McpServer): void {
               const slug = typeof page.slug === "string" ? page.slug : "";
               const content = typeof page.content === "string" ? page.content : "";
               if (!SLUG_RE.test(slug) || !content) continue;
-              if (Buffer.byteLength(content, "utf-8") > MAX_CONTENT_BYTES) continue;
+              if (Buffer.byteLength(content, "utf-8") > MAX_CONTENT_BYTES) { skippedThreads++; continue; }
 
               const pageFile = path.join(pagesDir, `${slug}.md`);
               const pageTmp = pageFile + ".tmp";

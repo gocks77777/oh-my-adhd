@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getThreads, getThread, getPages, SENSITIVE_DIRS } from "../../lib/brain.js";
+import { getThreads, getThread, getPages, isSensitivePath } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -42,13 +42,8 @@ export function registerWikiExport(server: McpServer): void {
             isError: true,
           };
         }
-        // Block writes into known sensitive dirs — use realpath for symlink safety
-        const homeDir = os.homedir();
-        let realResolved = resolved;
-        try { realResolved = await fs.realpath(path.dirname(resolved)); } catch { /* dir may not exist yet */ }
-        const realHome = await fs.realpath(homeDir).catch(() => homeDir);
-        const relDir = path.relative(realHome, realResolved).toLowerCase();
-        if (SENSITIVE_DIRS.some(d => relDir === d.toLowerCase() || relDir.startsWith(d.toLowerCase() + path.sep))) {
+        // Block writes into known sensitive dirs
+        if (await isSensitivePath(resolved)) {
           return {
             content: [{ type: "text", text: "오류: 보안상 해당 경로에는 내보낼 수 없습니다." }],
             isError: true,
