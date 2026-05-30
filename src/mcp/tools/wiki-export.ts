@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getThreads, getThread, getPages, isSensitivePath } from "../../lib/brain.js";
+import { getThreads, getThread, getPages, isSensitivePath, SCHEMA_VERSION } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -25,7 +25,7 @@ export function registerWikiExport(server: McpServer): void {
 
         const exportData = {
           exportedAt: new Date().toISOString(),
-          schemaVersion: 1,
+          schemaVersion: SCHEMA_VERSION,
           stats: { threads: threads.length, pages: pages.length },
           threads: threadContents,
           pages,

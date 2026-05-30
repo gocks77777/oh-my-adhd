@@ -217,13 +217,11 @@ describe("wiki_import", () => {
     expect(text).toContain("0개 가져옴");
   });
 
-  it("rejects files larger than 100MB", async () => {
+  it("rejects malformed JSON", async () => {
     const { writeFile } = await import("fs/promises");
-    const big = join(tmpDir, "big.json");
-    // Write a JSON file that reports a large size via a crafted string
-    // We can't actually write 100MB in a test, so we test the format check path instead
-    await writeFile(big, "not valid json", "utf-8");
-    const r = await client.callTool({ name: "wiki_import", arguments: { inputPath: big } });
+    const bad = join(tmpDir, "malformed.json");
+    await writeFile(bad, "not valid json", "utf-8");
+    const r = await client.callTool({ name: "wiki_import", arguments: { inputPath: bad } });
     const text = (r.content as { type: string; text: string }[])[0].text;
     expect(text).toContain("오류");
   });
@@ -265,6 +263,23 @@ describe("wiki_import", () => {
     // content file must not exist
     const { access } = await import("fs/promises");
     await expect(access(join(tmpDir, "threads", `${bigId}.md`))).rejects.toThrow();
+  });
+
+  it("skips page with oversized content (>5MB)", async () => {
+    const { writeFile, access } = await import("fs/promises");
+    const oversized = join(tmpDir, "oversize-page.json");
+    await writeFile(oversized, JSON.stringify({
+      schemaVersion: 1,
+      threads: [],
+      pages: [{ slug: "big-page", content: "x".repeat(5 * 1024 * 1024 + 1) }],
+    }), "utf-8");
+
+    const r = await client.callTool({ name: "wiki_import", arguments: { inputPath: oversized } });
+    const text = (r.content as { type: string; text: string }[])[0].text;
+    expect(text).toContain("0개 가져옴");
+    expect(text).toContain("건너뜀");
+
+    await expect(access(join(tmpDir, "pages", "big-page.md"))).rejects.toThrow();
   });
 
   it("skips duplicate thread when overwrite=false", async () => {

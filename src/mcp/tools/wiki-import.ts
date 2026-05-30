@@ -137,7 +137,7 @@ export function registerWikiImport(server: McpServer): void {
 
             // Project only allowed ThreadMeta fields — no arbitrary spread
             const meta: Record<string, unknown> = { id, title };
-            if (typeof thread.updatedAt === "string") meta.updatedAt = thread.updatedAt;
+            meta.updatedAt = typeof thread.updatedAt === "string" ? thread.updatedAt : new Date().toISOString();
             if (typeof thread.is_open === "boolean") meta.is_open = thread.is_open;
             if (typeof thread.is_done === "boolean") meta.is_done = thread.is_done;
             if (typeof thread.last_action === "string") meta.last_action = thread.last_action;
