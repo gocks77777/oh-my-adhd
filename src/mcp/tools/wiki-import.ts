@@ -103,6 +103,7 @@ export function registerWikiImport(server: McpServer): void {
         let importedThreads = 0;
         let skippedThreads = 0;
         let importedPages = 0;
+        let skippedPages = 0;
 
         await withBrainLock(async () => {
           // Load existing manifest inside lock
@@ -164,7 +165,7 @@ export function registerWikiImport(server: McpServer): void {
               const slug = typeof page.slug === "string" ? page.slug : "";
               const content = typeof page.content === "string" ? page.content : "";
               if (!SLUG_RE.test(slug) || !content) continue;
-              if (Buffer.byteLength(content, "utf-8") > MAX_CONTENT_BYTES) { skippedThreads++; continue; }
+              if (Buffer.byteLength(content, "utf-8") > MAX_CONTENT_BYTES) { skippedPages++; continue; }
 
               const pageFile = path.join(pagesDir, `${slug}.md`);
               const pageTmp = pageFile + ".tmp";
@@ -181,7 +182,7 @@ export function registerWikiImport(server: McpServer): void {
             text: [
               "가져오기 완료 ✓",
               `스레드: ${importedThreads}개 가져옴${skippedThreads > 0 ? ` (${skippedThreads}개 건너뜀)` : ""}`,
-              `페이지: ${importedPages}개 가져옴`,
+              `페이지: ${importedPages}개 가져옴${skippedPages > 0 ? ` (${skippedPages}개 건너뜀)` : ""}`,
               `원본 파일: ${resolved}`,
             ].join("\n"),
           }],
