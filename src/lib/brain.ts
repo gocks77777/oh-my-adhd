@@ -18,8 +18,9 @@ export const SENSITIVE_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker",
 
 // Absolute system paths that are sensitive regardless of home dir location
 const SYSTEM_SENSITIVE_DIRS = [
-  path.join("/", "root", ".ssh"), path.join("/", "root", ".aws"),
-  path.join("/", "etc", "ssh"), path.join("/", "etc", "ssl"),
+  "/root/.ssh", "/root/.aws", "/root/.gnupg", "/root/.kube", "/root/.docker",
+  "/etc/ssh", "/etc/ssl", "/etc/shadow", "/etc/sudoers",
+  "/private/etc/ssh", "/private/etc/ssl", // macOS canonical paths
 ];
 
 export async function isSensitivePath(filePath: string): Promise<boolean> {
@@ -30,8 +31,9 @@ export async function isSensitivePath(filePath: string): Promise<boolean> {
   const rel = path.relative(realHome, realDir).toLowerCase();
   // Home-relative denylist
   if (SENSITIVE_DIRS.some(d => rel === d.toLowerCase() || rel.startsWith(d.toLowerCase() + path.sep))) return true;
-  // Absolute denylist for paths outside home (e.g. /root/.ssh, /etc/ssl)
-  if (SYSTEM_SENSITIVE_DIRS.some(d => realDir === d || realDir.startsWith(d + path.sep))) return true;
+  // Absolute denylist for paths outside home — case-folded for macOS APFS compatibility
+  const realDirLower = realDir.toLowerCase();
+  if (SYSTEM_SENSITIVE_DIRS.some(d => realDirLower === d || realDirLower.startsWith(d + "/"))) return true;
   return false;
 }
 
