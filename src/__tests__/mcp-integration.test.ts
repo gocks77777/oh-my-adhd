@@ -242,6 +242,31 @@ describe("wiki_import", () => {
     expect(text).toContain("스키마 버전 불일치");
   });
 
+  it("skips thread with oversized content (>5MB)", async () => {
+    const { writeFile, readFile } = await import("fs/promises");
+    const bigId = "aaaabbbb-cccc-dddd-eeee-ffffffffffff";
+    const oversized = join(tmpDir, "oversize.json");
+    await writeFile(oversized, JSON.stringify({
+      schemaVersion: 1,
+      threads: [{ id: bigId, title: "큰 스레드", content: "x".repeat(5 * 1024 * 1024 + 1) }],
+      pages: [],
+    }), "utf-8");
+
+    const r = await client.callTool({ name: "wiki_import", arguments: { inputPath: oversized } });
+    const text = (r.content as { type: string; text: string }[])[0].text;
+    expect(text).toContain("0개 가져옴");
+    expect(text).toContain("건너뜀");
+
+    // manifest must not contain the oversized thread id
+    const manifestRaw = await readFile(join(tmpDir, "threads", ".manifest.json"), "utf-8").catch(() => "[]");
+    const manifest = JSON.parse(manifestRaw) as { id: string }[];
+    expect(manifest.find(m => m.id === bigId)).toBeUndefined();
+
+    // content file must not exist
+    const { access } = await import("fs/promises");
+    await expect(access(join(tmpDir, "threads", `${bigId}.md`))).rejects.toThrow();
+  });
+
   it("skips duplicate thread when overwrite=false", async () => {
     const r1 = await dump("요약: 원본 스레드");
     const tid = r1.match(/thread: ([a-f0-9-]{36})/)?.[1];

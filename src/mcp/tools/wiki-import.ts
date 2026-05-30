@@ -3,7 +3,6 @@ import { z } from "zod";
 import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, UUID_RE, isSensitivePath, withBrainLock } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
-import os from "os";
 
 const SLUG_RE = /^[a-z0-9가-힣][a-z0-9가-힣_-]{0,127}$/;
 const MAX_CONTENT_BYTES = 5 * 1024 * 1024; // 5MB per thread
