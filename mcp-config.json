@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "oh-my-adhd": {
+      "command": "npx",
+      "args": ["oh-my-adhd", "mcp"]
+    }
+  }
+}
