@@ -1,6 +1,6 @@
 {
   "name": "oh-my-adhd",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "description": "ADHD second brain — zero-friction capture, auto context restore, unstick. MCP-native Claude Code plugin.",
   "author": "Yeachan Heo",
   "repository": {

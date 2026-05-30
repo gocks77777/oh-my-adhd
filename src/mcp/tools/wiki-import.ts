@@ -1,12 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, withBrainLock } from "../../lib/brain.js";
+import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, UUID_RE, withBrainLock } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SLUG_RE = /^[a-z0-9가-힣][a-z0-9가-힣_-]{0,127}$/;
 const MAX_CONTENT_BYTES = 5 * 1024 * 1024; // 5MB per thread
+const MAX_ITEMS = 10_000; // max threads or pages per import
 
 export function registerWikiImport(server: McpServer): void {
   server.tool(
@@ -26,9 +26,15 @@ export function registerWikiImport(server: McpServer): void {
           };
         }
 
-        let raw: string;
+        // Check file size before reading into memory
         try {
-          raw = await fs.readFile(resolved, "utf-8");
+          const stat = await fs.stat(resolved);
+          if (stat.size > 100 * 1024 * 1024) {
+            return {
+              content: [{ type: "text", text: "오류: 파일이 너무 큽니다 (100MB 초과)." }],
+              isError: true,
+            };
+          }
         } catch {
           return {
             content: [{ type: "text", text: `오류: 파일을 읽을 수 없습니다: ${resolved}` }],
@@ -36,9 +42,12 @@ export function registerWikiImport(server: McpServer): void {
           };
         }
 
-        if (Buffer.byteLength(raw, "utf-8") > 100 * 1024 * 1024) {
+        let raw: string;
+        try {
+          raw = await fs.readFile(resolved, "utf-8");
+        } catch {
           return {
-            content: [{ type: "text", text: "오류: 파일이 너무 큽니다 (100MB 초과)." }],
+            content: [{ type: "text", text: `오류: 파일을 읽을 수 없습니다: ${resolved}` }],
             isError: true,
           };
         }
@@ -60,6 +69,12 @@ export function registerWikiImport(server: McpServer): void {
         if (!exportData.threads || !Array.isArray(exportData.threads)) {
           return {
             content: [{ type: "text", text: "오류: 유효하지 않은 내보내기 파일 형식입니다." }],
+            isError: true,
+          };
+        }
+        if (exportData.threads.length > MAX_ITEMS || (exportData.pages?.length ?? 0) > MAX_ITEMS) {
+          return {
+            content: [{ type: "text", text: `오류: 항목이 너무 많습니다 (최대 ${MAX_ITEMS}개).` }],
             isError: true,
           };
         }

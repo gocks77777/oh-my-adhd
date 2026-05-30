@@ -48,10 +48,12 @@ try {
   const openThreads = manifest.filter(t => t.is_open).slice(0, 4);
   if (openThreads.length === 0) process.exit(0);
 
+  // Strip control chars only — preserves emoji, Korean, CJK, etc.
   const sanitize = (s, max) => String(s ?? "")
-    .replace(/[^ -~가-힣㄰-㆏ᄀ-ᇿ]/g, " ")
+    .replace(/[\x00-\x1F\x7F]/g, " ")
     .replace(/[`$<>]/g, "")
-    .replace(/\bignore (all|previous)\b/gi, "[redacted]")
+    .replace(/\b(ignore|disregard)\s+(all|previous|prior)\b/gi, "[redacted]")
+    .replace(/(이전|앞의|위의|모든)\s*(지시|명령|규칙)\s*(무시|잊어|버려)/g, "[redacted]")
     .slice(0, max);
 
   const lines = [

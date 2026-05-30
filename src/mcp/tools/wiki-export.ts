@@ -42,10 +42,15 @@ export function registerWikiExport(server: McpServer): void {
             isError: true,
           };
         }
-        // Block writes into known sensitive dirs (~/.ssh, ~/.aws, ~/.gnupg)
-        const sensitivePatterns = [".ssh/", ".aws/", ".gnupg/", ".config/git/"];
+        // Block writes into known sensitive dirs — use realpath for symlink safety
+        const SENSITIVE_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker",
+          path.join(".config", "git"), path.join(".config", "gh")];
         const homeDir = os.homedir();
-        if (sensitivePatterns.some(p => resolved.startsWith(path.join(homeDir, p)))) {
+        let realResolved = resolved;
+        try { realResolved = await fs.realpath(path.dirname(resolved)); } catch { /* dir may not exist yet */ }
+        const realHome = await fs.realpath(homeDir).catch(() => homeDir);
+        const relDir = path.relative(realHome, realResolved).toLowerCase();
+        if (SENSITIVE_DIRS.some(d => relDir === d.toLowerCase() || relDir.startsWith(d.toLowerCase() + path.sep))) {
           return {
             content: [{ type: "text", text: "오류: 보안상 해당 경로에는 내보낼 수 없습니다." }],
             isError: true,
@@ -67,7 +72,7 @@ export function registerWikiExport(server: McpServer): void {
               `경로: ${filePath}`,
               `스레드: ${threads.length}개 | 페이지: ${pages.length}개 | ${sizeKB}KB`,
               "",
-              "복원하려면: wiki_export 결과 JSON을 ~/.oh-my-adhd/로 수동 복사",
+              "복원하려면: wiki_import({ inputPath: \"<이 경로>\" }) 호출",
             ].join("\n"),
           }],
         };

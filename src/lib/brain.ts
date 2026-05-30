@@ -12,6 +12,7 @@ const MANIFEST_LOCK_TTL_MS = 10_000;
 const LOG_FILE = path.join(BRAIN_DIR, "logs", "brain.log");
 const VERSION_FILE = path.join(BRAIN_DIR, "VERSION");
 export const SCHEMA_VERSION = 1;
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function appendLog(level: "INFO" | "WARN" | "ERROR", msg: string): Promise<void> {
   try {
@@ -212,7 +213,7 @@ export async function saveCapture(
   const captureId = randomUUID();
   const timestamp = new Date().toISOString();
   const tid = threadId ?? captureId;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tid)) {
+  if (!UUID_RE.test(tid)) {
     throw new Error(`Invalid threadId: ${tid}`);
   }
   const threadFile = path.join(THREADS_DIR, `${tid}.md`);
@@ -358,10 +359,8 @@ export async function getThreads(): Promise<Thread[]> {
   return sorted;
 }
 
-const UUID_RE_STRICT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export async function getThread(threadId: string): Promise<string | null> {
-  if (!threadId || !UUID_RE_STRICT.test(threadId)) return null;
+  if (!threadId || !UUID_RE.test(threadId)) return null;
   try {
     return await fs.readFile(
       path.join(THREADS_DIR, `${threadId}.md`),
@@ -433,7 +432,6 @@ export async function savePage(slug: string, content: string): Promise<void> {
   await fs.rename(tmpPage, pageFile);
 }
 
-const UUID_RE = /^[a-zA-Z0-9_-]+$/;
 const TRASH_DIR = path.join(BRAIN_DIR, ".trash");
 
 export async function deleteThread(threadId: string): Promise<void> {
