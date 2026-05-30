@@ -397,20 +397,32 @@ describe("security", () => {
   it("wiki_import rejects absolute system paths (/etc/ssl)", async () => {
     const r = await client.callTool({ name: "wiki_import", arguments: { inputPath: "/etc/ssl/test.json" } });
     const text = (r.content as { type: string; text: string }[])[0].text;
-    expect(text).toContain("오류");
+    expect(text).toContain("보안상"); // must be security rejection, not generic IO error
     expect(text).not.toContain("가져오기 완료");
   });
 
   it("wiki_export rejects absolute system paths (/etc/ssh)", async () => {
     const r = await client.callTool({ name: "wiki_export", arguments: { outputPath: "/etc/ssh/test.json" } });
     const text = (r.content as { type: string; text: string }[])[0].text;
-    expect(text).toContain("오류");
+    expect(text).toContain("보안상");
     expect(text).not.toContain("내보내기 완료");
   });
 
-  it("isSensitivePath blocks case-variant absolute paths", async () => {
+  it("isSensitivePath blocks lowercase and case-variant absolute paths", async () => {
     const { isSensitivePath } = await import("../lib/brain.js");
+    // lowercase
     expect(await isSensitivePath("/etc/ssl/foo.json")).toBe(true);
     expect(await isSensitivePath("/etc/ssh/bar.json")).toBe(true);
+    // actual case variants — verifies realDirLower case-folding
+    expect(await isSensitivePath("/ETC/SSL/foo.json")).toBe(true);
+    expect(await isSensitivePath("/Etc/Ssh/bar.json")).toBe(true);
+    // other new entries
+    expect(await isSensitivePath("/root/.gnupg/foo.json")).toBe(true);
+    expect(await isSensitivePath("/root/.kube/foo.json")).toBe(true);
+    expect(await isSensitivePath("/root/.docker/foo.json")).toBe(true);
+    expect(await isSensitivePath("/etc/shadow/foo.json")).toBe(true);
+    expect(await isSensitivePath("/etc/sudoers/foo.json")).toBe(true);
+    // safe path must NOT be blocked
+    expect(await isSensitivePath("/tmp/my-export.json")).toBe(false);
   });
 });

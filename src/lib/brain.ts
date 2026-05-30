@@ -20,7 +20,7 @@ export const SENSITIVE_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker",
 const SYSTEM_SENSITIVE_DIRS = [
   "/root/.ssh", "/root/.aws", "/root/.gnupg", "/root/.kube", "/root/.docker",
   "/etc/ssh", "/etc/ssl", "/etc/shadow", "/etc/sudoers",
-  "/private/etc/ssh", "/private/etc/ssl", // macOS canonical paths
+  "/private/etc/ssh", "/private/etc/ssl", "/private/etc/shadow", "/private/etc/sudoers", // macOS canonical paths
 ];
 
 export async function isSensitivePath(filePath: string): Promise<boolean> {
