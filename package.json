@@ -5,20 +5,27 @@
   "author": "Yeachan Heo",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Yeachan-Heo/oh-my-adhd"
+    "url": "git+https://github.com/Yeachan-Heo/oh-my-adhd.git"
   },
   "homepage": "https://github.com/Yeachan-Heo/oh-my-adhd#readme",
   "bugs": {
     "url": "https://github.com/Yeachan-Heo/oh-my-adhd/issues"
   },
-  "keywords": ["claude", "mcp", "adhd", "second-brain", "claude-code", "productivity"],
+  "keywords": [
+    "claude",
+    "mcp",
+    "adhd",
+    "second-brain",
+    "claude-code",
+    "productivity"
+  ],
   "type": "module",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
   },
   "bin": {
-    "oh-my-adhd": "./bin/oh-my-adhd.mjs"
+    "oh-my-adhd": "bin/oh-my-adhd.mjs"
   },
   "files": [
     "bin",

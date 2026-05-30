@@ -19,7 +19,7 @@ export function registerWikiRecall(server: McpServer): void {
 
         // Use manifest-cached signal fields where available; fall back to file reads only for uncached
         const uncachedIdx = candidates
-          .map((t, i) => (t.is_open === undefined ? i : -1))
+          .map((t, i) => (t.is_open == null ? i : -1))
           .filter((i) => i >= 0);
 
         const fileContents = new Map<string, string>();
@@ -51,7 +51,7 @@ export function registerWikiRecall(server: McpServer): void {
             let next_action: string;
             let blocker: string;
 
-            if (t.is_open !== undefined && t.last_action !== undefined && t.capture_count !== undefined) {
+            if (t.is_open != null && t.last_action != null && t.capture_count != null) {
               // Fast path: use manifest cache
               is_open = t.is_open;
               last_action = t.last_action;
