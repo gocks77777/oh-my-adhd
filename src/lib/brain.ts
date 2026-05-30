@@ -16,13 +16,23 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 export const SENSITIVE_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker",
   path.join(".config", "git"), path.join(".config", "gh")];
 
+// Absolute system paths that are sensitive regardless of home dir location
+const SYSTEM_SENSITIVE_DIRS = [
+  path.join("/", "root", ".ssh"), path.join("/", "root", ".aws"),
+  path.join("/", "etc", "ssh"), path.join("/", "etc", "ssl"),
+];
+
 export async function isSensitivePath(filePath: string): Promise<boolean> {
   const homeDir = os.homedir();
   let realDir = path.dirname(filePath);
   try { realDir = await fs.realpath(realDir); } catch { /* dir may not exist yet */ }
   const realHome = await fs.realpath(homeDir).catch(() => homeDir);
   const rel = path.relative(realHome, realDir).toLowerCase();
-  return SENSITIVE_DIRS.some(d => rel === d.toLowerCase() || rel.startsWith(d.toLowerCase() + path.sep));
+  // Home-relative denylist
+  if (SENSITIVE_DIRS.some(d => rel === d.toLowerCase() || rel.startsWith(d.toLowerCase() + path.sep))) return true;
+  // Absolute denylist for paths outside home (e.g. /root/.ssh, /etc/ssl)
+  if (SYSTEM_SENSITIVE_DIRS.some(d => realDir === d || realDir.startsWith(d + path.sep))) return true;
+  return false;
 }
 
 async function appendLog(level: "INFO" | "WARN" | "ERROR", msg: string): Promise<void> {

@@ -34,25 +34,22 @@ export function registerWikiImport(server: McpServer): void {
           };
         }
 
-        // Check file size before reading into memory
-        try {
-          const stat = await fs.stat(resolved);
-          if (stat.size > 100 * 1024 * 1024) {
-            return {
-              content: [{ type: "text", text: "오류: 파일이 너무 큽니다 (100MB 초과)." }],
-              isError: true,
-            };
-          }
-        } catch {
-          return {
-            content: [{ type: "text", text: `오류: 파일을 읽을 수 없습니다: ${resolved}` }],
-            isError: true,
-          };
-        }
-
+        // Open once so stat + read refer to the same inode (closes TOCTOU window)
         let raw: string;
         try {
-          raw = await fs.readFile(resolved, "utf-8");
+          const handle = await fs.open(resolved, "r");
+          try {
+            const stat = await handle.stat();
+            if (stat.size > 100 * 1024 * 1024) {
+              return {
+                content: [{ type: "text", text: "오류: 파일이 너무 큽니다 (100MB 초과)." }],
+                isError: true,
+              };
+            }
+            raw = await handle.readFile({ encoding: "utf-8" });
+          } finally {
+            await handle.close();
+          }
         } catch {
           return {
             content: [{ type: "text", text: `오류: 파일을 읽을 수 없습니다: ${resolved}` }],
