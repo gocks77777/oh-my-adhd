@@ -3,6 +3,10 @@ import { z } from "zod";
 import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, UUID_RE, withBrainLock } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
+import os from "os";
+
+const SENSITIVE_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker",
+  path.join(".config", "git"), path.join(".config", "gh")];
 
 const SLUG_RE = /^[a-z0-9가-힣][a-z0-9가-힣_-]{0,127}$/;
 const MAX_CONTENT_BYTES = 5 * 1024 * 1024; // 5MB per thread
@@ -22,6 +26,19 @@ export function registerWikiImport(server: McpServer): void {
         if (!resolved.endsWith(".json")) {
           return {
             content: [{ type: "text", text: "오류: inputPath는 .json 확장자로 끝나야 합니다." }],
+            isError: true,
+          };
+        }
+
+        // Block reads from sensitive dirs — mirrors wiki_export denylist
+        const homeDir = os.homedir();
+        let realInputDir = path.dirname(resolved);
+        try { realInputDir = await fs.realpath(realInputDir); } catch { /* dir may not exist */ }
+        const realHome = await fs.realpath(homeDir).catch(() => homeDir);
+        const relInputDir = path.relative(realHome, realInputDir).toLowerCase();
+        if (SENSITIVE_DIRS.some(d => relInputDir === d.toLowerCase() || relInputDir.startsWith(d.toLowerCase() + path.sep))) {
+          return {
+            content: [{ type: "text", text: "오류: 보안상 해당 경로에서는 가져올 수 없습니다." }],
             isError: true,
           };
         }
@@ -137,6 +154,7 @@ export function registerWikiImport(server: McpServer): void {
             const idx = manifest.findIndex(m => m.id === id);
             if (idx >= 0) manifest[idx] = meta as { id: string };
             else manifest.push(meta as { id: string });
+            existingIds.add(id); // prevent duplicate IDs within same import
             importedThreads++;
           }
 

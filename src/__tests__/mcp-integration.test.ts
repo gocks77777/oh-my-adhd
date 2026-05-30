@@ -258,3 +258,32 @@ describe("wiki_import", () => {
     expect(text).toContain("건너뜀");
   });
 });
+
+// ---------------------------------------------------------------------------
+// security: sanitize regression + denylist
+// ---------------------------------------------------------------------------
+describe("security", () => {
+  it("wiki_recall preserves emoji and Korean in thread title", async () => {
+    await dump("요약: 🔴 이모지 제목 테스트\n다음할것: 확인");
+    const text = await recall();
+    expect(text).toContain("🔴");
+    expect(text).toContain("이모지");
+  });
+
+  it("wiki_export rejects outputPath in sensitive dir", async () => {
+    const { homedir } = await import("os");
+    const sensitiveOut = join(homedir(), ".ssh", "test-export.json");
+    const r = await client.callTool({ name: "wiki_export", arguments: { outputPath: sensitiveOut } });
+    const text = (r.content as { type: string; text: string }[])[0].text;
+    expect(text).toContain("오류");
+    expect(text).not.toContain("내보내기 완료");
+  });
+
+  it("wiki_import rejects inputPath in sensitive dir", async () => {
+    const { homedir } = await import("os");
+    const sensitiveIn = join(homedir(), ".ssh", "test-import.json");
+    const r = await client.callTool({ name: "wiki_import", arguments: { inputPath: sensitiveIn } });
+    const text = (r.content as { type: string; text: string }[])[0].text;
+    expect(text).toContain("오류");
+  });
+});
