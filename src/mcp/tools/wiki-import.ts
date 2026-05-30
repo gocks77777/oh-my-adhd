@@ -152,7 +152,10 @@ export function registerWikiImport(server: McpServer): void {
             importedThreads++;
           }
 
-          // Write updated manifest atomically inside lock
+          // Sort by updatedAt desc — matches saveCapture/updateManifestEntry behavior
+          (manifest as unknown as Array<Record<string, unknown>>).sort((a, b) =>
+            new Date(b.updatedAt as string).getTime() - new Date(a.updatedAt as string).getTime()
+          );
           const tmp = manifestFile + ".tmp";
           await fs.writeFile(tmp, JSON.stringify(manifest, null, 2), "utf-8");
           await fs.rename(tmp, manifestFile);

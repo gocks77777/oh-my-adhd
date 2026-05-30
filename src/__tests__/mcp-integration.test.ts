@@ -188,6 +188,26 @@ describe("wiki_import", () => {
     expect(text).toContain("1개 가져옴");
   });
 
+  it("defaults updatedAt to now when absent from imported thread", async () => {
+    const { writeFile, readFile } = await import("fs/promises");
+    const noDate = join(tmpDir, "no-date.json");
+    const tid = "ccccdddd-eeee-ffff-aaaa-bbbbbbbbbbbb";
+    await writeFile(noDate, JSON.stringify({
+      schemaVersion: 1,
+      threads: [{ id: tid, title: "날짜없는 스레드", content: "내용" }],
+      pages: [],
+    }), "utf-8");
+
+    await client.callTool({ name: "wiki_import", arguments: { inputPath: noDate } });
+
+    const manifestRaw = await readFile(join(tmpDir, "threads", ".manifest.json"), "utf-8");
+    const manifest = JSON.parse(manifestRaw) as Array<{ id: string; updatedAt?: string }>;
+    const entry = manifest.find(m => m.id === tid);
+    expect(entry).toBeDefined();
+    expect(entry!.updatedAt).toBeTruthy();
+    expect(() => new Date(entry!.updatedAt!).toISOString()).not.toThrow();
+  });
+
   it("rejects path traversal in thread.id", async () => {
     const { writeFile } = await import("fs/promises");
     const evil = join(tmpDir, "evil.json");
