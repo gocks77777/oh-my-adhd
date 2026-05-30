@@ -408,7 +408,7 @@ describe("security", () => {
     expect(text).not.toContain("내보내기 완료");
   });
 
-  it("isSensitivePath blocks lowercase and case-variant absolute paths", async () => {
+  it("isSensitivePath blocks absolute system paths including case variants and all new entries", async () => {
     const { isSensitivePath } = await import("../lib/brain.js");
     // lowercase
     expect(await isSensitivePath("/etc/ssl/foo.json")).toBe(true);

@@ -16,11 +16,14 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 export const SENSITIVE_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker",
   path.join(".config", "git"), path.join(".config", "gh")];
 
-// Absolute system paths that are sensitive regardless of home dir location
-const SYSTEM_SENSITIVE_DIRS = [
+// Absolute system paths/dirs that are sensitive regardless of home dir location.
+// Includes both directories (e.g. /etc/ssh) and file paths (e.g. /etc/shadow) —
+// dirname-based matching means a file entry blocks writes to non-existent subdirs of it.
+// macOS /private/etc/* entries handle APFS realpath resolution of /etc/* symlinks.
+const SYSTEM_SENSITIVE_PATHS = [
   "/root/.ssh", "/root/.aws", "/root/.gnupg", "/root/.kube", "/root/.docker",
   "/etc/ssh", "/etc/ssl", "/etc/shadow", "/etc/sudoers",
-  "/private/etc/ssh", "/private/etc/ssl", "/private/etc/shadow", "/private/etc/sudoers", // macOS canonical paths
+  "/private/etc/ssh", "/private/etc/ssl", "/private/etc/shadow", "/private/etc/sudoers",
 ];
 
 export async function isSensitivePath(filePath: string): Promise<boolean> {
@@ -33,7 +36,7 @@ export async function isSensitivePath(filePath: string): Promise<boolean> {
   if (SENSITIVE_DIRS.some(d => rel === d.toLowerCase() || rel.startsWith(d.toLowerCase() + path.sep))) return true;
   // Absolute denylist for paths outside home — case-folded for macOS APFS compatibility
   const realDirLower = realDir.toLowerCase();
-  if (SYSTEM_SENSITIVE_DIRS.some(d => realDirLower === d || realDirLower.startsWith(d + "/"))) return true;
+  if (SYSTEM_SENSITIVE_PATHS.some(d => realDirLower === d || realDirLower.startsWith(d + path.posix.sep))) return true;
   return false;
 }
 
