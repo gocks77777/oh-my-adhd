@@ -164,7 +164,7 @@ export function registerWikiImport(server: McpServer): void {
 
               const slug = typeof page.slug === "string" ? page.slug : "";
               const content = typeof page.content === "string" ? page.content : "";
-              if (!SLUG_RE.test(slug) || !content) continue;
+              if (!SLUG_RE.test(slug) || !content) { skippedPages++; continue; }
               if (Buffer.byteLength(content, "utf-8") > MAX_CONTENT_BYTES) { skippedPages++; continue; }
 
               const pageFile = path.join(pagesDir, `${slug}.md`);
