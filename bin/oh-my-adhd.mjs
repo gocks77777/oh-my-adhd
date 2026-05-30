@@ -66,7 +66,7 @@ switch (cmd) {
     claudeJson.mcpServers = claudeJson.mcpServers || {};
     claudeJson.mcpServers["oh-my-adhd"] = {
       command: "npx",
-      args: ["oh-my-adhd", "mcp"],
+      args: ["--yes", "oh-my-adhd@latest", "mcp"],
     };
     writeFileSync(claudeJsonPath, JSON.stringify(claudeJson, null, 2) + "\n", "utf8");
     console.log(`✓ MCP server registered in ${claudeJsonPath}`);
