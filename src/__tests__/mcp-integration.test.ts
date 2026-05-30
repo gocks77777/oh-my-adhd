@@ -230,6 +230,31 @@ describe("wiki_import", () => {
     expect(manifest[1].id).toBe(older);
   });
 
+  it("import into non-empty manifest preserves global sort order", async () => {
+    // existing thread from a normal dump
+    const existingText = await dump("요약: 기존 스레드\n다음할것: 뭔가");
+    const existingId = existingText.match(/thread: ([a-f0-9-]{36})/)?.[1]!;
+
+    // import an older thread
+    const { writeFile, readFile } = await import("fs/promises");
+    const oldImport = join(tmpDir, "old-import.json");
+    const oldId = "ddddeeee-ffff-0000-1111-222233334444";
+    await writeFile(oldImport, JSON.stringify({
+      schemaVersion: 1,
+      threads: [{ id: oldId, title: "과거", content: "오래된", updatedAt: "2019-06-01T00:00:00.000Z" }],
+      pages: [],
+    }), "utf-8");
+
+    await client.callTool({ name: "wiki_import", arguments: { inputPath: oldImport } });
+
+    const manifestRaw = await readFile(join(tmpDir, "threads", ".manifest.json"), "utf-8");
+    const manifest = JSON.parse(manifestRaw) as Array<{ id: string }>;
+    // existing (recent) thread must rank above the newly imported old thread
+    const existingIdx = manifest.findIndex(m => m.id === existingId);
+    const oldIdx = manifest.findIndex(m => m.id === oldId);
+    expect(existingIdx).toBeLessThan(oldIdx);
+  });
+
   it("rejects path traversal in thread.id", async () => {
     const { writeFile } = await import("fs/promises");
     const evil = join(tmpDir, "evil.json");
