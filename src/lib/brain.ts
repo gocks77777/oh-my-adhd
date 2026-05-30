@@ -13,6 +13,8 @@ const LOG_FILE = path.join(BRAIN_DIR, "logs", "brain.log");
 const VERSION_FILE = path.join(BRAIN_DIR, "VERSION");
 export const SCHEMA_VERSION = 1;
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const SENSITIVE_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker",
+  path.join(".config", "git"), path.join(".config", "gh")];
 
 async function appendLog(level: "INFO" | "WARN" | "ERROR", msg: string): Promise<void> {
   try {

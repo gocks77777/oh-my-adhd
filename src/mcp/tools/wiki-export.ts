@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getThreads, getThread, getPages } from "../../lib/brain.js";
+import { getThreads, getThread, getPages, SENSITIVE_DIRS } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -43,8 +43,6 @@ export function registerWikiExport(server: McpServer): void {
           };
         }
         // Block writes into known sensitive dirs — use realpath for symlink safety
-        const SENSITIVE_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker",
-          path.join(".config", "git"), path.join(".config", "gh")];
         const homeDir = os.homedir();
         let realResolved = resolved;
         try { realResolved = await fs.realpath(path.dirname(resolved)); } catch { /* dir may not exist yet */ }

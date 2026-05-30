@@ -1,12 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, UUID_RE, withBrainLock } from "../../lib/brain.js";
+import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, UUID_RE, SENSITIVE_DIRS, withBrainLock } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-
-const SENSITIVE_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker",
-  path.join(".config", "git"), path.join(".config", "gh")];
 
 const SLUG_RE = /^[a-z0-9가-힣][a-z0-9가-힣_-]{0,127}$/;
 const MAX_CONTENT_BYTES = 5 * 1024 * 1024; // 5MB per thread
@@ -172,6 +169,7 @@ export function registerWikiImport(server: McpServer): void {
               const slug = typeof page.slug === "string" ? page.slug : "";
               const content = typeof page.content === "string" ? page.content : "";
               if (!SLUG_RE.test(slug) || !content) continue;
+              if (Buffer.byteLength(content, "utf-8") > MAX_CONTENT_BYTES) continue;
 
               const pageFile = path.join(pagesDir, `${slug}.md`);
               const pageTmp = pageFile + ".tmp";
