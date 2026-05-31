@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
-import { BRAIN_DIR, updateManifestEntry, getThreads, withBrainLock, extractFieldBrain } from "./brain.js";
+import { BRAIN_DIR, updateManifestEntry, getThreads, withBrainLock, extractFieldBrain, parseLastCapture } from "./brain.js";
 
 const THREADS_DIR = path.join(BRAIN_DIR, "threads");
 const CONSOLIDATION_STATE = path.join(THREADS_DIR, ".consolidation.json");
@@ -88,7 +88,7 @@ function extractKeywords(text: string): Set<string> {
 
 const STALE_DAYS = 30;
 
-async function consolidateThread(threadId: string, threadFile: string, cutoff: number): Promise<boolean> {
+async function consolidateThread(threadId: string, threadFile: string): Promise<boolean> {
   return withBrainLock(async () => {
     let content: string;
     try {
@@ -102,10 +102,9 @@ async function consolidateThread(threadId: string, threadFile: string, cutoff: n
       return false;
     }
 
-    // Extract key structured fields from the last few captures for sidecar
-    const captures = content.split(/\n---\n/).slice(1).filter(p => p.trim());
-    const lastCapture = captures.at(-1) ?? "";
-    const fullText = lastCapture.replace(/^(?:_[^_\n]+_|\*\*[^*\n]+\*\*)\s*/m, "").trim();
+    // Extract key structured fields from the last capture for sidecar
+    const sig = parseLastCapture(content);
+    const fullText = sig.fullText;
 
     const fields = ["결정", "가설", "막힌것", "다음할것", "블로커", "요약"];
     const extracted = fields
@@ -128,7 +127,7 @@ async function consolidateThread(threadId: string, threadFile: string, cutoff: n
     const sidecarContent = [
       `# Summary: ${title}`,
       `_consolidated: ${ts}_`,
-      `_captures: ${captures.length}_`,
+      `_captures: ${sig.capture_count}_`,
       ``,
       extracted.length > 0 ? extracted.join("\n") : "(구조화된 필드 없음)",
       ``,
@@ -153,7 +152,7 @@ async function ageBasedTrim(): Promise<number> {
 
   await Promise.allSettled(stale.map(async (t) => {
     const threadFile = path.join(THREADS_DIR, `${t.id}.md`);
-    const consolidated = await consolidateThread(t.id, threadFile, cutoff);
+    const consolidated = await consolidateThread(t.id, threadFile);
     if (consolidated) {
       // Update manifest: mark as consolidated, preserve updatedAt
       const originalMs = new Date(t.updatedAt).getTime();

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ensureBrainDirs, BRAIN_DIR, SCHEMA_VERSION, UUID_RE, isSensitivePath, withBrainLock, ThreadMeta } from "../../lib/brain.js";
 import fs from "fs/promises";
 import path from "path";
+import { randomUUID } from "crypto";
 
 const SLUG_RE = /^[a-z0-9가-힣][a-z0-9가-힣_-]{0,127}$/;
 const MAX_CONTENT_BYTES = 5 * 1024 * 1024; // 5MB per thread
@@ -127,7 +128,7 @@ export function registerWikiImport(server: McpServer): void {
                 continue;
               }
               const threadFile = path.join(threadsDir, `${id}.md`);
-              const tmp = threadFile + ".tmp";
+              const tmp = path.join(threadsDir, `.tmp-${randomUUID()}`);
               await fs.writeFile(tmp, thread.content, "utf-8");
               await fs.rename(tmp, threadFile);
             }
@@ -172,7 +173,7 @@ export function registerWikiImport(server: McpServer): void {
               if (Buffer.byteLength(content, "utf-8") > MAX_CONTENT_BYTES) { skippedPages++; continue; }
 
               const pageFile = path.join(pagesDir, `${slug}.md`);
-              const pageTmp = pageFile + ".tmp";
+              const pageTmp = path.join(pagesDir, `.tmp-${randomUUID()}`);
               await fs.writeFile(pageTmp, content, "utf-8");
               await fs.rename(pageTmp, pageFile);
               importedPages++;

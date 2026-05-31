@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // oh-my-adhd Stop hook — blocks session end if no wiki_dump happened this session
-import { readFileSync, readdirSync } from "fs";
+import { readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { sanitize } from "./utils.mjs";
 
 // Escape hatch: OMC_FORCE_EXIT=1 bypasses the block
 if (process.env.OMC_FORCE_EXIT === "1") process.exit(0);
@@ -10,12 +11,9 @@ if (process.env.OMC_FORCE_EXIT === "1") process.exit(0);
 const BRAIN_DIR = process.env.OH_MY_ADHD_DIR ?? join(homedir(), ".oh-my-adhd");
 const MANIFEST = join(BRAIN_DIR, "threads", ".manifest.json");
 
-// Use parent PID (= Claude Code instance) as session discriminator
-const ppid = process.ppid;
-// If ppid is unavailable, skip protection rather than risk a shared-file collision
-if (!ppid) process.exit(0);
-const SESSION_START_FILE = join(BRAIN_DIR, `.session-start-${ppid}`);
-const LAST_DUMP_FILE = join(BRAIN_DIR, `.last-dump-${ppid}`);
+// Single-file scheme — no PPID, works at any spawn depth (npx chains)
+const SESSION_START_FILE = join(BRAIN_DIR, ".session-start");
+const LAST_DUMP_FILE = join(BRAIN_DIR, ".last-dump");
 
 try {
   const sessionStartMs = parseInt(readFileSync(SESSION_START_FILE, "utf-8").trim(), 10);
@@ -38,13 +36,6 @@ try {
   const openThreads = manifest.filter(t => t.is_open);
   if (openThreads.length > 0) {
     const top = openThreads[0];
-    // Strip control chars only — preserves emoji, Korean, CJK, etc.
-    const sanitize = (s, max) => String(s ?? "")
-      .replace(/[\x00-\x1F\x7F]/g, " ")
-      .replace(/[`$<>]/g, "")
-      .replace(/\b(ignore|disregard)\s+(all|previous|prior)\b/gi, "[redacted]")
-      .replace(/(이전|앞의|위의|모든)\s*(지시|명령|규칙)\s*(무시|잊어|버려)/g, "[redacted]")
-      .slice(0, max);
     const title = sanitize(top.title ?? "진행중인 작업", 40);
     const nextHint = top.next_action ? `\n→ 다음할것: ${sanitize(top.next_action, 60)}` : "";
     process.stdout.write(JSON.stringify({

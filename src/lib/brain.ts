@@ -218,6 +218,45 @@ export function stripGitSuffix(content: string): string {
 export const OPEN_SIGNAL = /(?:^|\n)\s*(?:다음할것|블로커|막힌것|가설|next|blocked|todo|wip)\s*:\s*\S/i;
 export const DONE_SIGNAL = /(?:^|\n)\s*상태:\s*[^\n]*(완료|해결됨|배포됨|종료|done|shipped|closed)/i;
 
+/**
+ * Parse the structured signal fields out of the *latest* capture in a thread file.
+ *
+ * A thread file is a series of capture blocks separated by `\n---\n`. Each block
+ * begins with a `**timestamp**` (or `_italic_`) header line. This helper isolates
+ * the last block, strips that header, and derives the signal fields that the
+ * manifest caches (`is_open`, `is_done`, `last_action`, `next_action`, `blocker`,
+ * `capture_count`).
+ *
+ * Centralized here so wiki-recall, getThreads (slow path), and consolidate all
+ * agree on exactly what "the last capture's signals" means — previously this
+ * 5-line parse was copy-pasted in three places and drifted.
+ */
+export interface LastCaptureSignals {
+  fullText: string;
+  is_open: boolean;
+  is_done: boolean;
+  last_action: string;
+  next_action: string;
+  blocker: string;
+  capture_count: number;
+}
+
+export function parseLastCapture(content: string): LastCaptureSignals {
+  const captures = content.split(/\n---\n/).slice(1).filter((p) => p.trim());
+  const lastCapture = captures.at(-1) ?? "";
+  const fullText = lastCapture.replace(/^(?:_[^_\n]+_|\*\*[^*\n]+\*\*)\s*/m, "").trim();
+  const is_done = DONE_SIGNAL.test(fullText);
+  return {
+    fullText,
+    is_open: OPEN_SIGNAL.test(fullText) && !is_done,
+    is_done,
+    last_action: fullText.replace(/\n+/g, " ").slice(0, 160),
+    next_action: extractFieldBrain(fullText, "다음할것").slice(0, 120),
+    blocker: extractFieldBrain(fullText, "막힌것").slice(0, 120),
+    capture_count: captures.length,
+  };
+}
+
 export function extractTitle(content: string): string {
   const raw = stripGitSuffix(content);
   const lines = raw.split("\n").map(l => l.trim()).filter(l => l.length > 0);
@@ -306,9 +345,8 @@ export async function saveCapture(
       manifest.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     );
 
-    // Session-scoped dump marker — keyed by parent PID (= Claude Code instance PID)
-    const ppid = process.ppid ?? 0;
-    const lastDumpFile = path.join(BRAIN_DIR, ppid ? `.last-dump-${ppid}` : ".last-dump");
+    // Single dump marker — no PPID so it works regardless of hook spawn depth (npx chains)
+    const lastDumpFile = path.join(BRAIN_DIR, ".last-dump");
     await fs.writeFile(lastDumpFile, String(Date.now()), "utf-8").catch(() => {});
   });
 
@@ -337,21 +375,18 @@ export async function getThreads(): Promise<Thread[]> {
       ]);
       const tid = file.replace(".md", "");
       const title = content.match(/^# (.+)/m)?.[1]?.trim() || tid;
-      const scanCaptures = content.split(/\n---\n/).slice(1).filter((p) => p.trim());
-      const lastCapture = scanCaptures.at(-1) ?? "";
-      const fullText = lastCapture.replace(/^(?:_[^_\n]+_|\*\*[^*\n]+\*\*)\s*/m, "").trim();
-      const is_open = OPEN_SIGNAL.test(fullText) && !DONE_SIGNAL.test(fullText);
+      const sig = parseLastCapture(content);
       return {
         id: tid,
         title,
         captures: [] as Capture[],
         updatedAt: stat.mtime.toISOString(),
-        is_open,
-        last_action: fullText.replace(/\n+/g, " ").slice(0, 160),
-        next_action: extractFieldBrain(fullText, "다음할것").slice(0, 120),
-        blocker: extractFieldBrain(fullText, "막힌것").slice(0, 120),
-        capture_count: scanCaptures.length,
-        is_done: DONE_SIGNAL.test(fullText),
+        is_open: sig.is_open,
+        last_action: sig.last_action,
+        next_action: sig.next_action,
+        blocker: sig.blocker,
+        capture_count: sig.capture_count,
+        is_done: sig.is_done,
       };
     })
   );

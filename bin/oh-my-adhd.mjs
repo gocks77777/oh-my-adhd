@@ -95,28 +95,29 @@ switch (cmd) {
 
     settings.hooks = settings.hooks || {};
 
-    // SessionStart: write session-start timestamp for Stop hook
-    // (wiki_recall is invoked by CLAUDE.md instruction, not a hook — avoids chicken-and-egg MCP startup error)
+    // SessionStart: run via npx subcommand so the hook path survives npx cache clears
+    // (wiki_recall MCP call is avoided at startup to prevent chicken-and-egg MCP startup errors)
     settings.hooks.SessionStart = settings.hooks.SessionStart || [];
 
-    // Remove legacy mcp_tool wiki_recall hooks (they caused "SessionStart:startup hook error")
+    // Remove legacy hooks: mcp_tool wiki_recall, inline writeFileSync timestamps, and old absolute-path node calls
     settings.hooks.SessionStart = settings.hooks.SessionStart.map((entry) => {
       if (!Array.isArray(entry.hooks)) return entry;
       const filtered = entry.hooks.filter(
-        (h) => !(h.type === "mcp_tool" && h.server === "oh-my-adhd" && h.tool === "wiki_recall")
+        (h) => !(h.type === "mcp_tool" && h.server === "oh-my-adhd" && h.tool === "wiki_recall") &&
+               !(h.type === "command" && h.command?.includes("writeFileSync") && h.command?.includes(".session-start")) &&
+               !(h.type === "command" && h.command?.includes("session-recall.mjs"))
       );
       return filtered.length === 0 ? null : { ...entry, hooks: filtered };
     }).filter(Boolean);
 
-    const timestampCmd = `node -e "const{writeFileSync,mkdirSync}=require('fs'),{join}=require('path'),{homedir}=require('os');const d=process.env.OH_MY_ADHD_DIR||join(homedir(),'.oh-my-adhd');try{mkdirSync(d,{recursive:true})}catch{}writeFileSync(join(d,'.session-start'),String(Date.now()))"`;
-    const alreadyHasTimestamp = settings.hooks.SessionStart.some((entry) =>
+    const alreadyHasSessionRecall = settings.hooks.SessionStart.some((entry) =>
       Array.isArray(entry.hooks) && entry.hooks.some(
-        (h) => h.type === "command" && h.command?.includes(".session-start")
+        (h) => h.type === "command" && h.command?.includes("oh-my-adhd") && h.command?.includes("session-recall")
       )
     );
-    if (!alreadyHasTimestamp) {
+    if (!alreadyHasSessionRecall) {
       settings.hooks.SessionStart.push({
-        hooks: [{ type: "command", command: timestampCmd, timeout: 5 }],
+        hooks: [{ type: "command", command: "npx --yes oh-my-adhd session-recall", timeout: 15 }],
       });
     }
 
@@ -124,24 +125,21 @@ switch (cmd) {
     settings.hooks.Stop = settings.hooks.Stop || [];
     const alreadyHasStop = settings.hooks.Stop.some((entry) =>
       Array.isArray(entry.hooks) && entry.hooks.some(
-        (h) => typeof h.command === "string" && h.command.includes("stop-hook.mjs")
+        (h) => typeof h.command === "string" && h.command.includes("stop-hook")
       )
     );
     if (!alreadyHasStop) {
-      // Remove legacy echo-only Stop hooks added by older versions of oh-my-adhd
+      // Remove legacy echo-only Stop hooks and old absolute-path node calls
       settings.hooks.Stop = settings.hooks.Stop.filter((entry) =>
         !Array.isArray(entry.hooks) || !entry.hooks.some(
-          (h) => typeof h.command === "string" && h.command.includes("wiki_dump") && h.command.startsWith("echo")
+          (h) => typeof h.command === "string" && (
+            (h.command.includes("wiki_dump") && h.command.startsWith("echo")) ||
+            h.command.includes("stop-hook.mjs")
+          )
         )
       );
       settings.hooks.Stop.push({
-        hooks: [
-          {
-            type: "command",
-            command: `node "${join(PROJECT_DIR, "scripts/stop-hook.mjs")}"`,
-            timeout: 10,
-          },
-        ],
+        hooks: [{ type: "command", command: "npx --yes oh-my-adhd stop-hook", timeout: 15 }],
       });
     }
 
@@ -320,15 +318,18 @@ switch (cmd) {
       const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
       const hasRecall = (settings?.hooks?.SessionStart ?? []).some((entry) =>
         Array.isArray(entry.hooks) && entry.hooks.some(
-          (h) => h.type === "mcp_tool" && h.server === "oh-my-adhd" && h.tool === "wiki_recall"
+          (h) => h.type === "command" && (
+            h.command?.includes("session-recall") ||
+            h.command?.includes(".session-start")
+          )
         )
       );
       const hasStop = (settings?.hooks?.Stop ?? []).some((entry) =>
         Array.isArray(entry.hooks) && entry.hooks.some(
-          (h) => typeof h.command === "string" && h.command.includes("stop-hook.mjs")
+          (h) => typeof h.command === "string" && h.command.includes("stop-hook")
         )
       );
-      results.push(hasRecall ? "✓ SessionStart 훅 (wiki_recall)" : "✗ SessionStart 훅 없음 — npx oh-my-adhd init 실행");
+      results.push(hasRecall ? "✓ SessionStart 훅 (session-recall)" : "✗ SessionStart 훅 없음 — npx oh-my-adhd init 실행");
       results.push(hasStop ? "✓ Stop 훅 (블로킹 강제 저장)" : "✗ Stop 훅 없음 — npx oh-my-adhd init 실행");
     } catch {
       results.push("⚠ settings.json 파싱 불가");
@@ -361,6 +362,18 @@ switch (cmd) {
   results.forEach(r => console.log(r));
   break;
 }
+
+  case "session-recall":
+  case "stop-hook": {
+    // Hook entry points — spawns the corresponding script; stdio inherited so Claude Code
+    // receives additionalContext (session-recall) or block decision (stop-hook) from stdout
+    const scriptName = cmd === "session-recall" ? "session-recall.mjs" : "stop-hook.mjs";
+    const script = join(PROJECT_DIR, "scripts", scriptName);
+    const proc = spawn(process.execPath, [script], { stdio: "inherit" });
+    proc.on("error", () => process.exit(0));
+    proc.on("exit", (code) => process.exit(code ?? 0));
+    break;
+  }
 
   case "mcp": {
     const serverDist = join(PROJECT_DIR, "dist/mcp/mcp/server.js");
