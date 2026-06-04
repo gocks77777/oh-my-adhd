@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.33] - 2026-06-04
+
+### Added
+- **Transcript-based auto-recovery**: When a terminal window is force-closed (Cmd+Q, window close) the Stop hook never runs and `wiki_dump` is never called. On the next session start, `session-recall.mjs` now detects the ungraceful exit (`.session-start` exists but `.last-dump` is missing or older) and recovers context by parsing the previous session's JSONL transcript. Extracts the last `wiki_dump` tool call or structured fields from assistant messages and prepends a `⚠️ 이전 세션이 저장 없이 종료됐어` block to `additionalContext`.
+- `findPrevTranscript()` — finds most-recent `.jsonl` excluding the current session file.
+- `recoverFromTranscript()` — walks transcript lines, extracts `wiki_dump` input or structured text fields.
+- `wasUngracefulExit()` — checks `.session-start` vs `.last-dump` timestamps to detect ungraceful exits.
+- `renderRecovered()` — formats the recovered fields as a human-readable context block.
+- Auto-persists recovery to `.auto-recovered.json` and updates `.last-dump` so repeat recovery doesn't trigger.
+- New test file `src/__tests__/session-recall.test.ts` (7 tests covering all recovery paths).
+
+### Removed
+- Temporary `capture-hook.mjs` (`/tmp/capture-hook.mjs`) removed from `~/.claude/settings.json` after confirming Claude Code passes `transcript_path` in SessionStart stdin.
+
 ## [0.2.31] - 2026-05-31
 
 ### Added
